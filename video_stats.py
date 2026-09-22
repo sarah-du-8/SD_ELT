@@ -4,6 +4,8 @@ import requests
 from pathlib import Path
 from datetime import date
 from dotenv import load_dotenv
+from airflow.decorators import task
+from airflow.models import variable
 
 load_dotenv(dotenv_path="./.env")
 API_KEY = os.getenv("API_KEY")
@@ -17,7 +19,7 @@ MAX_RESULTS = 50
 CACHE_DIR = Path("cache")
 CACHE_DIR.mkdir(exist_ok=True)
 
-
+@task
 def get_playlist_id(channel_id: str, use_cache: bool = True) -> str:
     """Return the 'uploads' playlist ID for a given channel (cached)."""
     cache_file = CACHE_DIR / f"playlist_id_{channel_id}.json"
@@ -38,7 +40,7 @@ def get_playlist_id(channel_id: str, use_cache: bool = True) -> str:
     cache_file.write_text(json.dumps({"playlist_id": playlist_id}))
     return playlist_id
 
-
+@task
 def get_video_ids(playlist_id: str, limit: int | None = None, use_cache: bool = True) -> list[str]:
     """Return video IDs from a playlist, handling pagination (cached)."""
     cache_file = CACHE_DIR / f"video_ids_{playlist_id}.json"
@@ -77,13 +79,13 @@ def get_video_ids(playlist_id: str, limit: int | None = None, use_cache: bool = 
     cache_file.write_text(json.dumps(video_ids))
     return video_ids
 
-
+@task
 def batch_list(video_id_list, batch_size):
     for i in range(0, len(video_id_list), batch_size):
         yield video_id_list[i:i + batch_size]
 
 
-
+@task
 def extract_video_data(video_ids):
 
     extracted_date = []
@@ -128,6 +130,8 @@ def extract_video_data(video_ids):
     except requests.exceptions.RequestException as e:
         raise e
 
+
+@task
 def save_to_json(extracted_data):
     file_path = f"./data/SD_ELT_{date.today()}.json"
 
