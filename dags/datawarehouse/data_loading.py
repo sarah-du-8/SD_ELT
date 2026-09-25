@@ -5,8 +5,8 @@ from datetime import date
 logger = logging.getLogger(__name__)
 
 
-def load_path():
-    file_path = f"./data/SD_ELT_{date.today()}.json"
+def load_data():
+    file_path = f"/opt/airflow/data/SD_ELT_{date.today()}.json"
 
     try:
         logger.info(f"Processing file: {file_path}")

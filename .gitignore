@@ -2,3 +2,5 @@ venv/
 __pysache__/
 .env
 logs/
+*.pyc
+soda_venv/

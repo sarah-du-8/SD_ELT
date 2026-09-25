@@ -2,7 +2,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
-TABLE = "sd_api"
+TABLE = "yt_api"
 
 
 def get_conn_cursor():
@@ -29,17 +29,31 @@ def create_schema(schema):
 def create_table(schema):
     conn, cur = get_conn_cursor()
     try:
-        table_sql = f"""
-            CREATE TABLE IF NOT EXISTS {schema}.{TABLE} (
-                "Video_ID" VARCHAR(11) PRIMARY KEY NOT NULL,
-                "Video_Title" TEXT NOT NULL,
-                "Upload_Date" TIMESTAMP NOT NULL,
-                "Duration" VARCHAR(20) NOT NULL,
-                "Video_Views" INT,
-                "Likes_Count" INT,
-                "Comments_Count" INT
-            );
-        """
+        if schema == 'staging':
+            table_sql = f"""
+                CREATE TABLE IF NOT EXISTS {schema}.{TABLE} (
+                    "Video_ID" VARCHAR(11) PRIMARY KEY NOT NULL,
+                    "Video_Title" TEXT NOT NULL,
+                    "Upload_Date" TIMESTAMP NOT NULL,
+                    "Duration" VARCHAR(20) NOT NULL,
+                    "Video_Views" INT,
+                    "Likes_Count" INT,
+                    "Comments_Count" INT
+                );
+            """
+        else:
+            table_sql = f"""
+                CREATE TABLE IF NOT EXISTS {schema}.{TABLE} (
+                    "Video_ID" VARCHAR(11) PRIMARY KEY NOT NULL,
+                    "Video_Title" TEXT NOT NULL,
+                    "Upload_Date" TIMESTAMP NOT NULL,
+                    "Duration" VARCHAR(20) NOT NULL,
+                    "Video_Type" VARCHAR(10) NOT NULL,
+                    "Video_Views" INT,
+                    "Likes_Count" INT,
+                    "Comments_Count" INT
+                );
+            """
         cur.execute(table_sql)
         conn.commit()
     finally:

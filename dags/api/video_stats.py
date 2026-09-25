@@ -1,23 +1,20 @@
-import os
 import json
 import requests
 from pathlib import Path
 from datetime import date
-from dotenv import load_dotenv
+
 from airflow.decorators import task
-from airflow.models import variable
+from airflow.models import Variable
 
-load_dotenv(dotenv_path="./.env")
-API_KEY = os.getenv("API_KEY")
-
-if not API_KEY:
-    raise RuntimeError("API_KEY not found — check your .env file")
+API_KEY = Variable.get("API_KEY")
+CHANNEL_HANDLE = Variable.get("CHANNEL_HANDLE", default_var="MrBeast")
 
 BASE_URL = "https://youtube.googleapis.com/youtube/v3"
 CHANNEL_ID = "UCX6OQ3DkcsbYNE6H8uQQuVA"  # MrBeast's channel ID
 MAX_RESULTS = 50
-CACHE_DIR = Path("cache")
-CACHE_DIR.mkdir(exist_ok=True)
+CACHE_DIR = Path("/opt/airflow/data/cache")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 @task
 def get_playlist_id(channel_id: str, use_cache: bool = True) -> str:
@@ -39,6 +36,7 @@ def get_playlist_id(channel_id: str, use_cache: bool = True) -> str:
     playlist_id = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
     cache_file.write_text(json.dumps({"playlist_id": playlist_id}))
     return playlist_id
+
 
 @task
 def get_video_ids(playlist_id: str, limit: int | None = None, use_cache: bool = True) -> list[str]:
@@ -79,53 +77,46 @@ def get_video_ids(playlist_id: str, limit: int | None = None, use_cache: bool = 
     cache_file.write_text(json.dumps(video_ids))
     return video_ids
 
-@task
-def batch_list(video_id_list, batch_size):
+
+def _batch_list(video_id_list, batch_size):
     for i in range(0, len(video_id_list), batch_size):
         yield video_id_list[i:i + batch_size]
 
 
 @task
 def extract_video_data(video_ids):
-
-    extracted_date = []
-
-    def batch_list(video_id_list, batch_size):
-        for i in range(0, len(video_id_list), batch_size):
-            yield video_id_list[i:i + batch_size]
-
+    extracted_data = []
 
     try:
-        for batch in batch_list(video_ids,MAX_RESULTS):
+        for batch in _batch_list(video_ids, MAX_RESULTS):
             video_ids_str = ",".join(batch)
 
-            url = f"https://youtube.googleapis.com/youtube/v3/videos?part=contentDetails&part=snippet&part=statistics&id={video_ids_str}&key={API_KEY}"
-
-            response = requests.get(url)
-
+            params = {
+                "part": "contentDetails,snippet,statistics",
+                "id": video_ids_str,
+                "key": API_KEY,
+            }
+            response = requests.get(f"{BASE_URL}/videos", params=params)
             response.raise_for_status()
-
             data = response.json()
 
-            for item in data.get('items',[]):
-                video_id = item['id']
-                snippet = item['snippet']
-                contentDetails = item['contentDetails']
-                statistics = item['statistics']
+            for item in data.get("items", []):
+                snippet = item["snippet"]
+                content_details = item["contentDetails"]
+                statistics = item["statistics"]
 
                 video_data = {
-                    "video_id": video_id,
-                    "title": snippet['title'],
-                    'publishedAt':snippet['publishedAt'],
-                    "duration":contentDetails['duration'],
-                    "viewCount":statistics.get('videCount',None),
-                    "likeCount":statistics.get('likeCount',None),
-                    "commentCount":statistics.get('commentCount',None)
+                    "video_id": item["id"],
+                    "title": snippet["title"],
+                    "publishedAt": snippet["publishedAt"],
+                    "duration": content_details["duration"],
+                    "viewCount": statistics.get("viewCount"),
+                    "likeCount": statistics.get("likeCount"),
+                    "commentCount": statistics.get("commentCount"),
                 }
+                extracted_data.append(video_data)
 
-                extracted_date.append(video_data)
-
-            return extracted_date
+        return extracted_data  # now runs after ALL batches
 
     except requests.exceptions.RequestException as e:
         raise e
@@ -133,23 +124,8 @@ def extract_video_data(video_ids):
 
 @task
 def save_to_json(extracted_data):
-    file_path = f"./data/SD_ELT_{date.today()}.json"
+    Path("/opt/airflow/data").mkdir(exist_ok=True)
+    file_path = f"/opt/airflow/data/SD_ELT_{date.today()}.json"
 
-    with open(file_path, "w", encoding = "utf-8") as json_outfiles:
-        json.dump(extracted_data,json_outfiles,indent=4, ensure_ascii=False)
-
-
-if __name__ == "__main__":
-    playlist_id = get_playlist_id(CHANNEL_ID)
-    print("Uploads playlist ID:", playlist_id)
-
-    video_ids = get_video_ids(playlist_id, limit=10)
-    print(f"Fetched {len(video_ids)} video IDs")
-
-    for vid in video_ids:
-        print(vid)
-
-    video_data = extract_video_data(video_ids)
-    print(video_data)
-
-    save_to_json(video_data)
+    with open(file_path, "w", encoding="utf-8") as json_outfiles:
+        json.dump(extracted_data, json_outfiles, indent=4, ensure_ascii=False)
