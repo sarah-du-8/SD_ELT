@@ -4,3 +4,4 @@ __pysache__/
 logs/
 *.pyc
 soda_venv/
+*.json
