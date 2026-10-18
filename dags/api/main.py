@@ -11,6 +11,7 @@ from api.video_stats import (
     CHANNEL_ID
 )
 from datawarehouse.dwh import staging_table, core_table
+from dataquality.soda import yt_elt_data_quality, staging_schema, core_schema
 
 # Define local timezone
 local_tz = pendulum.timezone("Europe/Malta")
@@ -26,6 +27,9 @@ default_args = {
     "dagrun_timeout": timedelta(hours=1),
     "start_date": datetime(2026, 9, 22, tzinfo=local_tz),
 }
+
+staging_schema = "staging"
+core_schema = "core"
 
 with DAG(
     dag_id="produce_json",
@@ -57,3 +61,18 @@ with DAG(
 
     # Define dependencies
     update_staging >> update_core
+
+
+
+with DAG(
+    dag_id="data_quality",
+    default_args=default_args,
+    description="DAG to check the data quality on both layers in the db",
+    schedule=None,
+    catchup=False,
+) as dag:
+
+    soda_validate_staging = yt_elt_data_quality(staging_schema)
+    soda_validate_core = yt_elt_data_quality(core_schema)
+
+    soda_validate_staging >> soda_validate_core
